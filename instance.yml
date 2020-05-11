@@ -1,22 +1,49 @@
-# Basic provisioning example
 ---
-- name: create instance
-  hosts: localhost
- 
-
+- hosts: local
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  
 
   tasks:
    - name: create ec2 instance
      ec2:
-       aws_access_key: {access_key}
-       aws_secret_key: {secret_key}
+       aws_access_key: "{{  aws_access_key }}"
+       aws_secret_key: "{{ aws_secret_key }}"
        image: ami-07c1207a9d40bc3bd
-       wait: yes
+       wait: true
        instance_type: t2.micro
-       group_id: sg-03a9f978f95f86397
+       group_id: sg-0886edd74dd7bf2c0
        key_name: art--key-pair
        region: us-east-2
        count_tag:
-         Name: apacheserver
+         Name: server
        exact_count: 1
      register: ec2
+   
+   - debug:
+       var: ec2
+
+   - name: Wait for SSH to come up
+     wait_for:
+       host: "{{ item.public_ip }}"
+       port: 22
+       state: started
+     with_items: "{{ ec2.instances }}"     
+
+     
+   - name: get ipvar
+     ec2_eip_info:
+       region: us-east-2      
+       filters:
+          instance-id: ec2.instance_ids
+     register: myip
+    
+   - debug:
+       var: ec2.instances[0].public_ip
+
+
+   - name: execute remote command,
+     command: ssh -i art--key-pair.pem ubuntu@{{ ec2.instances[0].public_ip }} "sudo -i && sudo apt update &&sudo apt -y install nginx &&  cd /var/www/html/ && sudo touch index.html && echo '<html><head><title>first file</title></head><body>HELLO EVERYONE!!!</body></html>'| sudo tee index.html"
+   
